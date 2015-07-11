@@ -3,6 +3,7 @@
 
 import 'dart:html';
 import 'dart:async';
+import 'dart:math';
 
 class GridPoint {
     final int x, y;
@@ -18,6 +19,10 @@ class GridPoint {
 
     String toString() {
         return "GridPont(" + x.toString() + "," + y.toString() + ")";
+    }
+
+    String toSimpleString() {
+        return "(" + x.toString() + "," + y.toString() + ")";
     }
 
     int get hashCode {
@@ -119,6 +124,30 @@ abstract class Monster extends Occupant {
     Action takeTurn();
 }
 
+abstract class CellMarker {
+    void drawOnCell(CanvasRenderingContext2D ctx,
+                    num bx0, num by0, num bxlen, num bylen);
+}
+
+class TombStone {
+    void drawOnCell(CanvasRenderingContext2D ctx,
+                      num bx0, num by0, num bxlen, num bylen) {
+
+        var x = bx0 + bxlen/2;
+        var y = by0 + bylen;
+
+        ctx.fillStyle = "#cd0000";
+        ctx.fillStyle = "gray";
+        ctx.textAlign = "center";
+        ctx.textBaseline = "bottom";
+        ctx.font = "37pt Calibri";
+        // ctx.fillText("\u{2620}", x, y);
+        ctx.fillText("@", x, y);
+        ctx.fillText("/", x, y);
+        ctx.fillText("\\", x, y);
+    }
+}
+
 class Zombie extends Monster {
 
     // zombies act every other turn
@@ -170,22 +199,22 @@ class Zombie extends Monster {
                       num bx0, num by0, num bxlen, num bylen) {
 
         var x = bx0 + bxlen/2;
-        var y = by0 + bylen/2;
+        var y = by0 + bylen;
 
         if (hit) {
             ctx.fillStyle = "#cd0000";
         } else if (active) {
             ctx.fillStyle = "black";
         } else {
-            ctx.fillStyle = "gray";
+            ctx.fillStyle = "#adadad";
         }
         ctx.textAlign = "center";
-        ctx.textBaseline = "middle";
+        ctx.textBaseline = "bottom";
         ctx.font = "37pt Calibri";
         ctx.fillText("z", x, y);
     }
 
-    void toString() { return "Zombie";}
+   String toString() { return "Zombie";}
 }
 
 
@@ -200,7 +229,7 @@ class Hero extends Occupant {
                       num bx0, num by0, num bxlen, num bylen) {
         //window.console.debug("hero: drawOnCell()");
         var x = bx0 + bxlen/2;
-        var y = by0 + bylen/2;
+        var y = by0 + bylen;
 
         if (hit) {
             ctx.fillStyle = "#cd0000";
@@ -208,23 +237,29 @@ class Hero extends Occupant {
             ctx.fillStyle = "black";
         }
         ctx.textAlign = "center";
-        ctx.textBaseline = "middle";
+        ctx.textBaseline = "bottom";
         ctx.font = "37pt Calibri";
         ctx.fillText("@", x, y);
     }
 
-    void toString() { return "Character";}
+    String toString() { return "Character";}
 }
 
 
 // a grid square
 class Square {
     Occupant occupant; // an occupant or NULL
+    CellMarker marker;
 
-    Square() : occupant = null;
+
+    Square() : occupant = null, marker = null;
 
     bool isOccupied() {
         return occupant != null;
+    }
+
+    bool isMarked() {
+        return marker != null;
     }
 
     bool isEmpty() {
@@ -237,7 +272,7 @@ class Square {
 }
 
 enum Input {
-    Up, Down, Left, Right
+    Up, Down, Left, Right, Reload,
 }
 
 // A dungeon grid
@@ -275,6 +310,13 @@ class Grid {
         assert(s.isEmpty());
         s.occupant = o;
         o.location = p;
+    }
+
+    void clearAll() {
+        for (var sq in squares) {
+            sq.occupant = null;
+            sq.marker = null;
+        }
     }
 
     bool moveToPoint(Occupant o, GridPoint newp) {
@@ -472,6 +514,9 @@ class DrawnGrid {
         //window.console.debug("draw square: " + p.toString());
 
         var sq = grid.getSquare(p);
+        if (sq.isMarked()) {
+            sq.marker.drawOnCell(ctx, x, y, boxDimX, boxDimX);
+        }
         if (sq.isOccupied()) {
             //window.console.debug("draw cell");
             sq.occupant.drawOnCell(ctx, x, y, boxDimX, boxDimX);
@@ -547,12 +592,34 @@ class DungeonState {
     Hero hero;
     int turn;
     bool hero_turn;
-    bool game_over;
+    bool hero_is_dead;
+    Random rng;
 
     DungeonState(this.dg)
     : monsters = [], turn=0, hero_turn=true {
+        rng = new Random();
         dg.drawGrid();
-        dg.status.updateStatus(dg.ctx, "tiny dungeon started");
+        dg.status.updateStatus(dg.ctx, "Tiny dungeon started");
+    }
+
+    void start() {
+        dg.drawGrid();
+        spawnHero(new GridPoint(0,0));
+        spawnMonster(new GridPoint(1,2), new Zombie(this, false));
+    }
+
+    void restart() {
+        monsters = [];
+        turn = 0;
+        hero_turn = true;
+        hero_is_dead = false;
+        dg.grid.clearAll();
+        start();
+        dg.status.updateStatus(dg.ctx, "Tiny dungeon restarted");
+    }
+
+    void reportTurn() {
+        dg.status.updateStatus(dg.ctx, "====> Turn: " + (1+turn).toString() + " (your move)");
     }
 
     void spawn(Occupant o, GridPoint p) {
@@ -563,16 +630,18 @@ class DungeonState {
         assert(hero == null);
         hero = new Hero(this);
         spawn(hero, p);
-        dg.status.updateStatus(dg.ctx, "Move character (@) with arrows");
+        dg.status.updateStatus(dg.ctx, "Move the character (@) with arrows");
+        reportTurn();
     }
 
     void spawnMonster(GridPoint p, Monster m) {
+        dg.status.updateStatus(dg.ctx, "Zombie spawned at " + p.toSimpleString());
         monsters.add(m);
         spawn(m, p);
     }
 
     void keyDown(KeyboardEvent e) {
-        //window.console.debug("Got keyboard event:" + e.toString() + " " + e.keyCode.toString());
+        window.console.debug("Got keyboard event:" + e.toString() + " " + e.keyCode.toString());
         var input = null;
         switch(e.keyCode) {
             case 39: // arrow right
@@ -598,21 +667,28 @@ class DungeonState {
             case 83: //'s'
             input = Input.Down;
             break;
+
+            case 82: // 'r'
+            input = Input.Reload;
+            break;
         }
 
         if (input != null) {
-            heroInput(input);
+            if (input == Input.Reload) {
+                restart();
+            } else {
+                heroInput(input);
+            }
         }
     }
 
     void heroInput(Input input) {
-        // NB: This should not happen, since you are handling the monster moves
-        // synchronously in this handler
         if (!hero_turn) {
             dg.status.updateStatus(dg.ctx, "Not your turn yet!");
+            return;
         }
 
-        if (game_over)
+        if (hero_is_dead)
             return;
 
         //  input to a direction
@@ -647,63 +723,90 @@ class DungeonState {
         } else {
            ha = Action.newMoveAction(dirPoint);
         }
-        resolveAction(hero, ha);
-        heroActed();
+
+        //new Future(() {
+            resolveAction(hero, ha);
+        //}).then((_) {;
+            heroActed();
+        ////});
     }
 
     void resolveAction(Occupant o, Action a) {
         switch (a.type) {
             case Action_.Move:
             GridPoint dest = a.asMove().dest;
-            window.console.debug(o.toString() + " moves to " + dest.toString());
+            dg.status.updateStatus(dg.ctx, o.toString() + " moves to " + dest.toSimpleString());
             var succ = dg.moveOccupant(o, dest);
             assert(succ);
-            break;
+            return;
 
             case Action_.Attack:
             GridPoint tp = a.asAttack().target;
             Occupant to = dg.grid.getSquare(tp).occupant;
-            window.console.debug(o.toString() + " Attacks " + to.toString() + "!");
+            dg.status.updateStatus(dg.ctx, o.toString() + " attacks " + to.toString() + "!");
             dg.hitOccupant(to);
             // one hit, one kill
             dg.removeOccupant(to);
             if (to == hero) {
-                this.game_over = true;
+                hero_is_dead = true;
+                var heroS = dg.grid.getSquare(hero.location);
+                heroS.marker = new TombStone();
             } else {
                 monsters.remove(to);
             }
-            break;
+            return;
 
             case Action_.Wait:
-            window.console.debug(o.toString() + " cannot move this turn");
-            break;
+            dg.status.updateStatus(dg.ctx, o.toString() + " cannot move this turn");
+            return;
 
             case Action_.Invalid:
             assert(false);
-            break;
+            return;
         }
+    }
+
+    void spawnRandomMonster() {
+        GridPoint p;
+        while (true) {
+            var px = rng.nextInt(dg.grid.x);
+            var py = rng.nextInt(dg.grid.y);
+            p = new GridPoint(px, py);
+            if (dg.grid.getSquare(p).isEmpty())
+                break;
+        }
+       spawnMonster(p, new Zombie(this, false));
     }
 
     void heroActed() {
         // hero moved
         hero_turn = false;
+        new Future.delayed(const Duration(milliseconds: 200), () {
+            endTurn();
+        });
+    }
+
+    void endTurn() {
         for (var m in monsters) {
             Action a = m.takeTurn();
             resolveAction(m, a);
             dg.drawGridSquare(m.location);
         }
 
-        if (game_over) {
-            dg.status.updateStatus(dg.ctx, "Game over :(");
-        } else {
-            turn++;
-            dg.status.updateStatus(dg.ctx, "Turn: " + turn.toString());
-            hero_turn = true;
+        if (hero_is_dead) {
+            dg.status.updateStatus(dg.ctx, "You died. Game over :(");
+            return;
+        } else if (monsters.length == 0) {
+            dg.status.updateStatus(dg.ctx, "You Killed the monster. Game over :)");
         }
+
+         turn++;
+         reportTurn();
+         hero_turn = true;
     }
 }
 
-void startDungeon()
+DungeonState startDungeon()
 {
     CanvasElement canvas = document.querySelector('#canvas');
     CanvasRenderingContext2D ctx = canvas.getContext('2d');
@@ -711,10 +814,8 @@ void startDungeon()
     DrawnGrid dg = new DrawnGrid(new Grid(3,3), canvas.width, canvas.height, ctx);
     canvas.focus();
     dg.paused = false;
-    dg.drawGrid();
     DungeonState dungeon = new DungeonState(dg);
-    dungeon.spawnHero(new GridPoint(0,0));
-    dungeon.spawnMonster(new GridPoint(1,2), new Zombie(dungeon, false));
+    dungeon.start();
 
     canvas.onKeyDown.listen( (e) {
         dungeon.keyDown(e);
@@ -727,6 +828,8 @@ void startDungeon()
     canvas.onFocus.listen( (e) {
         dg.resume();
     });
+
+    return dungeon;
 }
 
 // TODO:
@@ -739,9 +842,10 @@ void startDungeon()
 // x status text
 
 void main() {
-    startDungeon();
+    var dungeon = startDungeon();
     ButtonElement button = querySelector('#reset');
     button.onClick.listen( (e) {
+        // dungeon.restart(); // not sure why this does not work
         startDungeon();
     });
 }
