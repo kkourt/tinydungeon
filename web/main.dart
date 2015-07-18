@@ -1,5 +1,7 @@
 // This file is distributed under the terms of the MIT Licece (see the LICENSE
 // file).
+//
+// Kornilios Kourtis <kornilios@gmail.com>
 
 import 'dart:html';
 import 'dart:async';
@@ -631,7 +633,7 @@ class DungeonState {
       hero_is_dead = false {
         rng = new Random();
         dg.drawGrid();
-        dg.status.updateStatus(dg.ctx, "Tiny dungeon started");
+        dg.status.updateStatus(dg.ctx, "Tiny dungeon started (v0.1)");
     }
 
     void start() {
@@ -909,10 +911,6 @@ DungeonState startDungeon()
 
     return dungeon;
 }
-
-// TODO:
-// x do not respawn on previous block
-// x show attack
 
 void main() {
     startDungeon();
