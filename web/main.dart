@@ -623,6 +623,7 @@ class DungeonState {
     bool hero_is_dead;
     bool game_over;
     int monsters_killed;
+    GridPoint last_monster_death;
     Random rng;
 
     DungeonState(this.dg)
@@ -716,9 +717,13 @@ class DungeonState {
     }
 
     void heroInput(Input input) {
-        if (game_over) {
-            dg.status.updateStatus(dg.ctx, "Game is over. Please restart");
+        if (hero_is_dead) {
+            dg.status.updateStatus(dg.ctx, "You died. Restart if you want to play again.");
             return;
+        }
+
+        if (game_over) {
+            //dg.status.updateStatus(dg.ctx, "You killed all monsters. Restart if you want to play again.");
         }
 
         if (!hero_turn) {
@@ -781,8 +786,10 @@ class DungeonState {
                 if (monsters_killed < 10) {
                     //spawnMonster(new GridPoint(0,0), new Zombie(this, false));
                     spawnRandomMonster( (p) {
-                        return dg.grid.getSquare(p).isEmpty()
-                               && (p.x != 1 || p.y != 1);
+                        return dg.grid.getSquare(p).isEmpty() // square has to be empty
+                               && (p.x != 1 || p.y != 1)      // only spawn monsters in the borders
+                               && (p.x != last_monster_death.x
+                                   && p.y != last_monster_death.y);
                     });
                 } else {
                     dg.status.updateStatus(dg.ctx, "You Killed all monsters. Game over :)");
@@ -832,6 +839,7 @@ class DungeonState {
                 } else {
                     monsters.remove(to);
                     monsters_killed += 1;
+                    last_monster_death = to.location;
                     dg.drawGridSquare(to.location);
                 }
             });
@@ -900,6 +908,7 @@ DungeonState startDungeon()
 }
 
 // TODO:
+// x do not respawn on previous block
 // x show attack
 
 void main() {
