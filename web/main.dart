@@ -888,10 +888,13 @@ DungeonState startDungeon()
     canvas.onKeyDown.listen( (e) {
         //window.console.debug("Got keyboard event:" + e.toString() + " " + e.keyCode.toString());
         dungeon.keyDown(e);
+        // prevent scrolling: http://stackoverflow.com/questions/7603141/disable-arrow-keys-from-scrolling-only-when-user-is-interacting-with-canvas
+        e.preventDefault();
+        return false;
     });
 
     canvas.onBlur.listen( (e) {
-        //dg.pause();
+        dg.pause();
     });
 
     canvas.onFocus.listen( (e) {
